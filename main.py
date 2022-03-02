@@ -256,6 +256,7 @@ if __name__ == "__main__":
     l_parser = argparse.ArgumentParser(prog="Enterprise Architect Visio Event storming importer")
     l_parser.add_argument("Path", help="Path to a Visio file (or a directory containing multiple Visio files) to be imported in EA",
                           type=pathlib.Path)
+    l_parser.add_argument("GUID", help="Enterprise Architect GUID on which the imported elements will be added")
     l_parser.add_argument("-c", "--check-colors", help="verify if colors used in Visio diagram are compliant with Event storming",
                           action="store_true")
     l_parser.add_argument("--fix-colors", help="try to fix the colors used in the Visio diagram if they aren't compliant with Event storming convention",
@@ -277,11 +278,15 @@ if __name__ == "__main__":
     else:
         print(f"Connecting...{mEaRep.ConnectionString}")
 
+    # Get the node from which we will start to add the imported elements from Visio. This node
+    # is recovered through the GUID provided by the user
+    l_root_node = mEaRep.GetPackageByGuid(args.GUID)
+
     mEaRep.BatchAppend = True
     mEaRep.EnableUIUpdates = False
     for visio_file_path in l_visio_files:
         # For each file, we create a new package inside EA
-        l_root_package = mEaRep.Models.GetAt(0).Packages.AddNew(visio_file_path.stem, "")
+        l_root_package = l_root_node.Packages.AddNew(visio_file_path.stem, "")
         l_root_package.Update()
 
         with VisioFile(str(visio_file_path)) as vis:

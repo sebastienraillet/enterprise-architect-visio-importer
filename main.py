@@ -1,4 +1,7 @@
 import win32com.client
+import argparse
+import pathlib
+
 from vsdx import VisioFile, Shape
 from typing import Final, List
 
@@ -220,7 +223,43 @@ def convert_shape_to_EA_element(p_shape: Shape, p_use_case_package, p_use_case_d
         l_diagram_object.ElementID = l_element.ElementID
         l_diagram_object.Update()
 
+def build_files_list_to_import(p_path):
+    l_visio_files_to_import = []
+    if p_path.exists():
+        if p_path.is_file(): 
+            if p_path.suffix == ".vsdx":
+                # User provided only one file to import and it's a vsdx file
+                l_visio_files_to_import.append(p_path)
+            else:
+                print(f"The path {p_path} isn't a path to a Visio (.vsdx) file")
+        elif p_path.is_dir():
+            # User provided a directory inside we should look for all vsdx files
+            l_visio_files_to_import = list(p_path.glob('*.vsdx'))
+
+            # If the list is empty, we found no vsdx files in the directory. We inform
+            # the user about that
+            if not l_visio_files_to_import:
+                print(f"The directory you provided doesn't contain any Visio (*.vsdx) files")
+        else:
+            print(f"The path you provided isn't a path to a file or a directory")
+    else:
+        print(f"The specified path {p_path} doesn't exist")
+
+    return l_visio_files_to_import
+
 if __name__ == "__main__":
+    l_parser = argparse.ArgumentParser(prog="Enterprise Architect Visio Event storming importer")
+    l_parser.add_argument("Path", help="Path to a Visio file (or a directory containing multiple Visio files) to be imported in EA",
+                          type=pathlib.Path)
+    l_parser.add_argument("-c", "--check-colors", help="verify if colors used in Visio diagram are compliant with Event storming",
+                          action="store_true")
+    l_parser.add_argument("--fix-colors", help="try to fix the colors used in the Visio diagram if they aren't compliant with Event storming convention",
+                          action="store_true")
+    l_parser.add_argument("--dry-run", help="run the script without doing the import in Enterprise Architect", action="store_true")
+    args = l_parser.parse_args()
+
+    l_visio_files = build_files_list_to_import(args.Path)
+
     try:
         eaApp = win32com.client.Dispatch("EA.App")
     except:
@@ -233,16 +272,14 @@ if __name__ == "__main__":
     else:
         print(f"Connecting...{mEaRep.ConnectionString}")
 
-    l_visio_files = [f for f in listdir(VISIO_INPUT_DIR) if isfile(join(VISIO_INPUT_DIR, f)) and f.endswith('.vsdx')]
-
     mEaRep.BatchAppend = True
     mEaRep.EnableUIUpdates = False
     for visio_file_path in l_visio_files:
         # For each file, we create a new package inside EA
-        l_root_package = mEaRep.Models.GetAt(0).Packages.AddNew(visio_file_path, "")
+        l_root_package = mEaRep.Models.GetAt(0).Packages.AddNew(visio_file_path.name, "")
         l_root_package.Update()
 
-        with VisioFile(join(VISIO_INPUT_DIR, visio_file_path)) as vis:
+        with VisioFile(str(visio_file_path)) as vis:
             for page in vis.pages:
                 # For each pages inside the Visio file, we create an activity diagram
                 # with the page name

@@ -19,6 +19,8 @@ EA_ACTIVITY_ELEMENT: Final[str] = 'Activity'
 EA_CONSTRAINT_ELEMENT: Final[str] = 'Constraint'
 EA_RISK_ELEMENT: Final[str] = 'Risk'
 EA_OBJECT_ELEMENT: Final[str] = 'Object'
+EA_STATE_ELEMENT: Final[str] = 'State'
+EA_TEXT_ELEMENT: Final[str] = 'Text'
 
 EA_CONTROL_FLOW_CONNECTOR: Final[str] = 'ControlFlow'
 
@@ -67,9 +69,9 @@ COLOR_EA_ELEMENTS_MAPPING = {ALLOWED_DOMAIN_EVENT_COLOR: EA_ACTION_ELEMENT,
                              ALLOWED_POLICY_COLOR: EA_CONSTRAINT_ELEMENT,
                              ALLOWED_AGGREGATE_COLOR: EA_ACTIVITY_ELEMENT,
                              ALLOWED_EXTERNAL_SYSTEM_COLOR: EA_EVENT_ELEMENT,
-                             ALLOWED_VIEW_READ_MODEL_COLOR: EA_OBJECT_ELEMENT,
+                             ALLOWED_VIEW_READ_MODEL_COLOR: EA_STATE_ELEMENT,
                              ALLOWED_RISKS_COLOR: EA_RISK_ELEMENT,
-                             ALLOWED_NONE_COLOR: EA_OBJECT_ELEMENT}
+                             ALLOWED_NONE_COLOR: EA_TEXT_ELEMENT}
 
 PIXEL_PER_INCHES: Final[int] = 96
 PAGE_HEIGHT_INCHES: Final[int] = 11.70
@@ -210,6 +212,9 @@ def convert_shape_to_EA_element(p_shape: Shape, p_use_case_package, p_use_case_d
         l_object_type = COLOR_EA_ELEMENTS_MAPPING[l_rgb_color]
 
         l_element = p_use_case_package.Elements.AddNew(p_shape.text.rstrip("\n"), l_object_type)
+        if l_object_type == EA_TEXT_ELEMENT:
+            # To have information display on a text element, note should be put on it
+            l_element.Notes = p_shape.text
         l_element.SetAppearance(1, 0, convert_RGB_to_EA_color(l_rgb_color))
         l_element.Update()
         
@@ -276,7 +281,7 @@ if __name__ == "__main__":
     mEaRep.EnableUIUpdates = False
     for visio_file_path in l_visio_files:
         # For each file, we create a new package inside EA
-        l_root_package = mEaRep.Models.GetAt(0).Packages.AddNew(visio_file_path.name, "")
+        l_root_package = mEaRep.Models.GetAt(0).Packages.AddNew(visio_file_path.stem, "")
         l_root_package.Update()
 
         with VisioFile(str(visio_file_path)) as vis:

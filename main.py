@@ -1,4 +1,3 @@
-from xmlrpc.client import Boolean
 import win32com.client
 from vsdx import VisioFile, Shape
 from typing import Final, List
@@ -45,7 +44,7 @@ ALLOWED_NONE_COLOR: Final[str] = None
 
 ALLOWED_COLORS: List[str] = [ALLOWED_DOMAIN_EVENT_COLOR, ALLOWED_COMMAND_COLOR, ALLOWED_USER_COLOR,
                              ALLOWED_POLICY_COLOR, ALLOWED_AGGREGATE_COLOR, ALLOWED_EXTERNAL_SYSTEM_COLOR,
-                             ALLOWED_VIEW_READ_MODEL_COLOR, ALLOWED_RISKS_COLOR]
+                             ALLOWED_VIEW_READ_MODEL_COLOR, ALLOWED_RISKS_COLOR, ALLOWED_NONE_COLOR]
 
 OLD_COLORS: List[str] = [OLD_DOMAIN_EVENT_COLOR, OLD_COMMAND_COLOR, OLD_USER_COLOR, OLD_POLICY_COLOR,
                          OLD_EXTERNAL_SYSTEM_COLOR, OLD_VIEW_READ_MODEL_COLOR, OLD_RISKS_COLOR, OLD_MEDIA_AGGREGATE]
@@ -80,7 +79,7 @@ class Connector:
         self.start_connector_side = None
         self.end_connector_side = None
 
-    def is_valid(self) -> Boolean:
+    def is_valid(self) -> bool:
         return False if self.start_connector_side is None or self.end_connector_side is None else True
 
 
@@ -108,7 +107,7 @@ def verify_shape_color(p_shape):
                   f" on page: \"{page.name}\" has been successfully replaced")
         if p_shape.cell_value('FillForegnd') not in ALLOWED_COLORS:
             print(f"The element with the ID: {p_shape.ID} and the text: \"{p_shape.text[:-1]}\""
-                  f" on page: \"{page.name}\" is made of disallowed color")
+                  f" on page: \"{page.name}\" is made of a disallowed color: {p_shape.cell_value('FillForegnd')}")
 
 def get_position(p_shape: Shape):
     x_position = 0
@@ -234,7 +233,7 @@ if __name__ == "__main__":
     else:
         print(f"Connecting...{mEaRep.ConnectionString}")
 
-    l_visio_files = [f for f in listdir(VISIO_INPUT_DIR) if isfile(join(VISIO_INPUT_DIR, f))]
+    l_visio_files = [f for f in listdir(VISIO_INPUT_DIR) if isfile(join(VISIO_INPUT_DIR, f)) and f.endswith('.vsdx')]
 
     mEaRep.BatchAppend = True
     mEaRep.EnableUIUpdates = False

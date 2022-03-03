@@ -6,7 +6,7 @@ import xlsxwriter
 from vsdx import VisioFile, Shape
 from typing import Final, List
 
-from os import listdir
+from os import listdir, replace
 from os.path import isfile, join
 
 
@@ -141,7 +141,7 @@ class VisioShape:
             x_position, y_position = self.parent.get_position()
 
         if self.shape_type == 'Group':
-            x_position += self.shape.x - (self.width/2)
+            x_position += self.x - (self.width/2)
             y_position += self.y - (self.height/2)
         else:
             x_position += self.x
@@ -351,7 +351,9 @@ if __name__ == "__main__":
                           compliant with Event storming without doing any addition to Enterprise Architect", action="store_true")
     l_parser.add_argument("-g", "--generate-color-report", help="Generate an Excel report for each visio file imported listing all the colors \
                           which aren't compliant", action="store_true")
-    l_parser.add_argument("--fix-colors", help="Try to fix the colors used in the Visio diagram if they aren't \
+    l_parser.add_argument("-m", "--move-imported-location", help="Specify a directory where the Visio file \
+                          will be move after the import", type=pathlib.Path)
+    l_parser.add_argument("--no-fix-colors", help="Try to fix the colors used in the Visio diagram if they aren't \
                           compliant with Event storming convention", action="store_true")
     l_parser.add_argument("--dry-run", help="run the script without doing the import in Enterprise Architect", action="store_true")
     args = l_parser.parse_args()
@@ -385,7 +387,8 @@ if __name__ == "__main__":
         for page in visio_file.pages:
             # Iterate over each shape of this page
             for shape in page.shapes:
-                shape.fix_old_color()
+                if not args.no_fix_colors:
+                    shape.fix_old_color()
                 if not shape.is_color_allowed():
                     l_shape_bad_color.append(shape)
         if l_shape_bad_color:
@@ -432,6 +435,20 @@ if __name__ == "__main__":
 
                 create_EA_connectors(mEaRep)
                 VISIO_CONNECTORS = {}
+
+            # Move the imported file to the location specified by the user
+            l_imported_location_path = args.move_imported_location
+            if l_imported_location_path:
+                if l_imported_location_path.exists():
+                    if l_imported_location_path.is_dir():
+                        l_source_path = visio_file.path
+                        l_destination_path = l_imported_location_path / l_source_path.name
+                        print(f"File: {visio_file.name} is moved from {l_source_path} to {l_destination_path}")
+                        replace(l_source_path, l_destination_path)
+                    else:
+                        print(f"The path {l_imported_location_path} isn't a directory")
+                else:
+                    print(f"The path {l_imported_location_path} on which you want to move file after import doesn't exist")
         
         mEaRep.RefreshModelView(FULL_MODEL)
         mEaRep.BatchAppend = False

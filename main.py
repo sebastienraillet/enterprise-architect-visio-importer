@@ -298,25 +298,27 @@ def convert_shape_to_EA_element(p_shape: VisioShape, p_use_case_package, p_use_c
 
 def generate_color_report(p_visio_file: VisioFileToImport, p_bad_shape_list):
     l_excel_file_path = str(p_visio_file.path).replace(".vsdx", ".xlsx")
-    l_workbook = xlsxwriter.Workbook(l_excel_file_path)
-    l_worksheet = l_workbook.add_worksheet()
+    # If the excel file exists already, we don't recreate it
+    if not pathlib.Path(l_excel_file_path).exists():
+        l_workbook = xlsxwriter.Workbook(l_excel_file_path)
+        l_worksheet = l_workbook.add_worksheet()
 
-    # Build header row
-    l_bold = l_workbook.add_format({'bold': True})
-    l_worksheet.write(0, 0, "Page name", l_bold)
-    l_worksheet.write(0, 1, "Shape ID", l_bold)
-    l_worksheet.write(0, 2, "Text", l_bold)
-    l_worksheet.write(0, 3, "Disallowed color", l_bold)
+        # Build header row
+        l_bold = l_workbook.add_format({'bold': True})
+        l_worksheet.write(0, 0, "Page name", l_bold)
+        l_worksheet.write(0, 1, "Shape ID", l_bold)
+        l_worksheet.write(0, 2, "Text", l_bold)
+        l_worksheet.write(0, 3, "Disallowed color", l_bold)
 
-    l_row_index = 1
-    for bad_shape in p_bad_shape_list:
-        l_worksheet.write(l_row_index, 0, bad_shape.page.name)
-        l_worksheet.write(l_row_index, 1, bad_shape.ID)
-        l_worksheet.write(l_row_index, 2, bad_shape.text)
-        l_worksheet.write(l_row_index, 3, bad_shape.color)
-        l_row_index += 1
+        l_row_index = 1
+        for bad_shape in p_bad_shape_list:
+            l_worksheet.write(l_row_index, 0, bad_shape.page.name)
+            l_worksheet.write(l_row_index, 1, bad_shape.ID)
+            l_worksheet.write(l_row_index, 2, bad_shape.text)
+            l_worksheet.write(l_row_index, 3, bad_shape.color)
+            l_row_index += 1
 
-    l_workbook.close()     
+        l_workbook.close()
 
 
 def build_files_list_to_import(p_path):

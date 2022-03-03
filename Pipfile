@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 vsdx = "~=0.4.18"
 pywin32 = "==303"
+xlsxwriter = "~=3.0.3"
 
 [dev-packages]
 

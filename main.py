@@ -1,6 +1,7 @@
 import win32com.client
 import argparse
 import pathlib
+import xlsxwriter
 
 from vsdx import VisioFile, Shape
 from typing import Final, List
@@ -90,6 +91,7 @@ class Connector:
 class VisioShape:
     def __init__(self, p_internal_shape: Shape) -> None:
         self.m_internal_visio_shape = p_internal_shape
+        self.page = None
 
     @property
     def ID(self) -> str:
@@ -169,6 +171,7 @@ class VisioPage:
                 
         if p_shape.m_internal_visio_shape.shape_type != 'Group':
             if not p_shape in self.m_shapes:
+                p_shape.page = self
                 self.m_shapes.append(p_shape)
             else:
                 raise ValueError(f"shape: {p_shape.text} already exist in page {self.name}")
@@ -200,26 +203,6 @@ class VisioFileToImport:
 def is_connector(p_shape) -> bool:
     return True if p_shape.cell_value('ShapeRouteStyle') is not None else False
 
-
-def fix_old_color(p_shape):
-    l_current_color = p_shape.cell_value('FillForegnd')
-    p_shape.set_cell_value('FillForegnd', OLD_NEW_COLORS_MAPPING[l_current_color])
-
-def get_position(p_shape: Shape):
-    x_position = 0
-    y_position = 0
-
-    if p_shape.parent.shape_type == 'Group':
-        x_position, y_position = get_position(p_shape.parent)
-
-    if p_shape.shape_type == 'Group':
-        x_position += p_shape.x - (p_shape.width/2)
-        y_position += p_shape.y - (p_shape.height/2)
-    else:
-        x_position += p_shape.x
-        y_position += p_shape.y
-
-    return (x_position, y_position)
 
 def convert_shape_coordinates_to_EA(p_shape: VisioShape):
     # Variables until the next comments are in inch
@@ -312,6 +295,29 @@ def convert_shape_to_EA_element(p_shape: VisioShape, p_use_case_package, p_use_c
     l_diagram_object.ElementID = l_element.ElementID
     l_diagram_object.Update()
 
+def generate_color_report(p_visio_file: VisioFileToImport, p_bad_shape_list):
+    l_excel_file_path = str(p_visio_file.path).replace(".vsdx", ".xlsx")
+    l_workbook = xlsxwriter.Workbook(l_excel_file_path)
+    l_worksheet = l_workbook.add_worksheet()
+
+    # Build header row
+    l_bold = l_workbook.add_format({'bold': True})
+    l_worksheet.write(0, 0, "Page name", l_bold)
+    l_worksheet.write(0, 1, "Shape ID", l_bold)
+    l_worksheet.write(0, 2, "Text", l_bold)
+    l_worksheet.write(0, 3, "Disallowed color", l_bold)
+
+    l_row_index = 1
+    for bad_shape in p_bad_shape_list:
+        l_worksheet.write(l_row_index, 0, bad_shape.page.name)
+        l_worksheet.write(l_row_index, 1, bad_shape.ID)
+        l_worksheet.write(l_row_index, 2, bad_shape.text)
+        l_worksheet.write(l_row_index, 3, bad_shape.color)
+        l_row_index += 1
+
+    l_workbook.close()     
+
+
 def build_files_list_to_import(p_path):
     l_visio_files_to_import = []
     if p_path.exists():
@@ -343,6 +349,8 @@ if __name__ == "__main__":
     l_parser.add_argument("GUID", help="Enterprise Architect GUID on which the imported elements will be added")
     l_parser.add_argument("-c", "--check-colors-only", help="Verify only if colors used in Visio diagram are \
                           compliant with Event storming without doing any addition to Enterprise Architect", action="store_true")
+    l_parser.add_argument("-g", "--generate-color-report", help="Generate an Excel report for each visio file imported listing all the colors \
+                          which aren't compliant", action="store_true")
     l_parser.add_argument("--fix-colors", help="Try to fix the colors used in the Visio diagram if they aren't \
                           compliant with Event storming convention", action="store_true")
     l_parser.add_argument("--dry-run", help="run the script without doing the import in Enterprise Architect", action="store_true")
@@ -369,22 +377,28 @@ if __name__ == "__main__":
                 l_visio_file_to_import.add_page(l_visio_page_to_import)
             l_visio_file_to_work_on.append(l_visio_file_to_import)
 
-    # First check if colors used in Visio are the correct one
-    l_all_color_are_ok = True
+    l_shape_bad_color = []
+    l_bad_color_found = False
+    # First check if colors used in Visio are the correct one (based on Event Storming template).
+    # Then, generates a report if the user askeded to do it
     for visio_file in l_visio_file_to_work_on:
         for page in visio_file.pages:
             # Iterate over each shape of this page
             for shape in page.shapes:
                 shape.fix_old_color()
                 if not shape.is_color_allowed():
-                    if l_all_color_are_ok:
-                        l_all_color_are_ok = False
-                    print(f"The element with the ID: {shape.ID} and the text: \"{shape.text}\""
-                          f" on page: \"{page.name}\" is made of a disallowed color: {shape.color}")
+                    l_shape_bad_color.append(shape)
+                    # print(f"The element with the ID: {shape.ID} and the text: \"{shape.text}\""
+                    #       f" on page: \"{page.name}\" is made of a disallowed color: {shape.color}")
+        if l_shape_bad_color:
+            l_bad_color_found = True
+            if args.generate_color_report:
+                generate_color_report(visio_file, l_shape_bad_color)
+            l_shape_bad_color = []
 
     # Then, we add the element in Enterprise architect if all the colors check are ok and
     # the user asked to do it
-    if (not args.check_colors_only) and (not args.dry_run):
+    if (not args.check_colors_only) and (not args.dry_run) and (not l_bad_color_found):
         try:
             eaApp = win32com.client.Dispatch("EA.App")
         except:

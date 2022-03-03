@@ -186,6 +186,7 @@ class VisioFileToImport:
         self.m_pages = {}
         self.name = p_path.stem
         self.path = p_path
+        self.color_compliant = True
 
     def add_page(self, p_page: VisioPage):
         if not p_page.name in self.m_pages.keys():
@@ -380,7 +381,6 @@ if __name__ == "__main__":
             l_visio_file_to_work_on.append(l_visio_file_to_import)
 
     l_shape_bad_color = []
-    l_bad_color_found = False
     # First check if colors used in Visio are the correct one (based on Event Storming template).
     # Then, generates a report if the user askeded to do it
     for visio_file in l_visio_file_to_work_on:
@@ -392,14 +392,17 @@ if __name__ == "__main__":
                 if not shape.is_color_allowed():
                     l_shape_bad_color.append(shape)
         if l_shape_bad_color:
-            l_bad_color_found = True
+            # If this visio file contains bad colors, declare the visio file as not color compliant. Then, 
+            # if the user asked to generate a report, do it :)
+            visio_file.color_compliant = False
             if args.generate_color_report:
                 generate_color_report(visio_file, l_shape_bad_color)
             l_shape_bad_color = []
 
+
     # Then, we add the element in Enterprise architect if all the colors check are ok and
     # the user asked to do it
-    if (not args.check_colors_only) and (not args.dry_run) and (not l_bad_color_found):
+    if (not args.check_colors_only) and (not args.dry_run):
         try:
             eaApp = win32com.client.Dispatch("EA.App")
         except:
@@ -419,36 +422,39 @@ if __name__ == "__main__":
         mEaRep.BatchAppend = True
         mEaRep.EnableUIUpdates = False
         for visio_file in l_visio_file_to_work_on:
-            # For each file, we create a new package inside EA
-            l_root_package = l_root_node.Packages.AddNew(visio_file.name, "")
-            l_root_package.Update()
+            if visio_file.color_compliant:
+                # For each file, we create a new package inside EA
+                l_root_package = l_root_node.Packages.AddNew(visio_file.name, "")
+                l_root_package.Update()
 
-            for page in visio_file.pages:
-                # For each pages inside the Visio file, we create an activity diagram
-                # with the page name
-                l_diagram = l_root_package.Diagrams.AddNew(page.name, EA_ACTIVITY_DIAGRAM)
-                l_diagram.Update()
+                for page in visio_file.pages:
+                    # For each pages inside the Visio file, we create an activity diagram
+                    # with the page name
+                    l_diagram = l_root_package.Diagrams.AddNew(page.name, EA_ACTIVITY_DIAGRAM)
+                    l_diagram.Update()
 
-                # Iterate over each shape of this page
-                for shape in page.shapes:
-                    convert_shape_to_EA_element(shape, l_root_package, l_diagram)
+                    # Iterate over each shape of this page
+                    for shape in page.shapes:
+                        convert_shape_to_EA_element(shape, l_root_package, l_diagram)
 
-                create_EA_connectors(mEaRep)
-                VISIO_CONNECTORS = {}
+                    create_EA_connectors(mEaRep)
+                    VISIO_CONNECTORS = {}
 
-            # Move the imported file to the location specified by the user
-            l_imported_location_path = args.move_imported_location
-            if l_imported_location_path:
-                if l_imported_location_path.exists():
-                    if l_imported_location_path.is_dir():
-                        l_source_path = visio_file.path
-                        l_destination_path = l_imported_location_path / l_source_path.name
-                        print(f"File: {visio_file.name} is moved from {l_source_path} to {l_destination_path}")
-                        replace(l_source_path, l_destination_path)
+                # Move the imported file to the location specified by the user
+                l_imported_location_path = args.move_imported_location
+                if l_imported_location_path:
+                    if l_imported_location_path.exists():
+                        if l_imported_location_path.is_dir():
+                            l_source_path = visio_file.path
+                            l_destination_path = l_imported_location_path / l_source_path.name
+                            print(f"File: {visio_file.name} is moved from {l_source_path} to {l_destination_path}")
+                            replace(l_source_path, l_destination_path)
+                        else:
+                            print(f"The path {l_imported_location_path} isn't a directory")
                     else:
-                        print(f"The path {l_imported_location_path} isn't a directory")
-                else:
-                    print(f"The path {l_imported_location_path} on which you want to move file after import doesn't exist")
+                        print(f"The path {l_imported_location_path} on which you want to move file after import doesn't exist")
+            else:
+                print(f"The file {visio_file.name} contains color which aren't compliant. It won't be imported into Enterprise Architect")
         
         mEaRep.RefreshModelView(FULL_MODEL)
         mEaRep.BatchAppend = False

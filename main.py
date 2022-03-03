@@ -9,8 +9,8 @@ from typing import Final, List
 from os import listdir
 from os.path import isfile, join
 
-VISIO_INPUT_DIR: Final[str] = 'input_visio_file'
 
+# Enterprise Architect definition
 EA_ACTIVITY_DIAGRAM: Final[str] = 'Activity'
 
 EA_ACTION_ELEMENT: Final[str] = 'Action'
@@ -27,7 +27,7 @@ EA_CONTROL_FLOW_CONNECTOR: Final[str] = 'ControlFlow'
 
 FULL_MODEL = 0
 
-
+# Color definitions
 OLD_DOMAIN_EVENT_COLOR: Final[str] = '#f09609'
 OLD_COMMAND_COLOR: Final[str] = '#1ba1e2'
 OLD_USER_COLOR: Final[str] = '#e4ed3b'
@@ -198,8 +198,6 @@ class VisioFileToImport:
         return self.m_pages.values()
 
 
-
-
 def is_connector(p_shape) -> bool:
     return True if p_shape.cell_value('ShapeRouteStyle') is not None else False
 
@@ -266,6 +264,7 @@ def store_connector(p_visio_connector: Shape, p_ea_element):
         else:
             l_connector.end_connector_side = p_ea_element.ElementGUID
 
+
 def create_EA_connectors(p_ea_repository):
     for connector in VISIO_CONNECTORS.values():
         if connector.is_valid():
@@ -294,6 +293,7 @@ def convert_shape_to_EA_element(p_shape: VisioShape, p_use_case_package, p_use_c
     l_diagram_object = p_use_case_diagram.DiagramObjects.AddNew(l_position, "")
     l_diagram_object.ElementID = l_element.ElementID
     l_diagram_object.Update()
+
 
 def generate_color_report(p_visio_file: VisioFileToImport, p_bad_shape_list):
     l_excel_file_path = str(p_visio_file.path).replace(".vsdx", ".xlsx")
@@ -388,8 +388,6 @@ if __name__ == "__main__":
                 shape.fix_old_color()
                 if not shape.is_color_allowed():
                     l_shape_bad_color.append(shape)
-                    # print(f"The element with the ID: {shape.ID} and the text: \"{shape.text}\""
-                    #       f" on page: \"{page.name}\" is made of a disallowed color: {shape.color}")
         if l_shape_bad_color:
             l_bad_color_found = True
             if args.generate_color_report:

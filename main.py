@@ -87,6 +87,115 @@ class Connector:
     def is_valid(self) -> bool:
         return False if self.start_connector_side is None or self.end_connector_side is None else True
 
+class VisioShape:
+    def __init__(self, p_internal_shape: Shape) -> None:
+        self.m_internal_visio_shape = p_internal_shape
+
+    @property
+    def ID(self) -> str:
+        return self.m_internal_visio_shape.ID
+
+    @property
+    def text(self) -> str:
+        return self.m_internal_visio_shape.text[:-1]
+
+    @property
+    def color(self):
+        return self.m_internal_visio_shape.cell_value('FillForegnd')
+
+    @color.setter
+    def color(self, p_color: str):
+        self.m_internal_visio_shape.set_cell_value('FillForegnd', p_color)
+
+    @property
+    def shape_type(self) -> str:
+        return self.m_internal_visio_shape.shape_type
+    
+    @property
+    def parent(self):
+        return VisioShape(self.m_internal_visio_shape.parent)
+
+    @property
+    def x(self) -> float:
+        return self.m_internal_visio_shape.x
+
+    @property
+    def y(self) -> float:
+        return self.m_internal_visio_shape.y
+
+    @property
+    def width(self) -> float:
+        return self.m_internal_visio_shape.width
+
+    @property
+    def height(self) -> float:
+        return self.m_internal_visio_shape.height
+
+    def get_position(self):
+        x_position = 0
+        y_position = 0
+
+        if self.parent.shape_type == 'Group':
+            x_position, y_position = self.parent.get_position()
+
+        if self.shape_type == 'Group':
+            x_position += self.shape.x - (self.width/2)
+            y_position += self.y - (self.height/2)
+        else:
+            x_position += self.x
+            y_position += self.y
+
+        return (x_position, y_position)
+
+    def fix_old_color(self):
+        # Old color present try to fix it
+        if self.color in OLD_COLORS:  
+            self.color = OLD_NEW_COLORS_MAPPING[self.color]
+
+    def is_color_allowed(self) -> bool:
+        return True if self.color in ALLOWED_COLORS else False
+
+
+class VisioPage:
+    def __init__(self, p_name: str) -> None:
+        self.m_shapes = []
+        self.name = p_name
+
+    def add_shape(self, p_shape: VisioShape):
+        for sub_shape in p_shape.m_internal_visio_shape.sub_shapes():
+            if sub_shape.shape_type is not None:
+                l_visio_shape = VisioShape(sub_shape)
+                self.add_shape(l_visio_shape)
+                
+        if p_shape.m_internal_visio_shape.shape_type != 'Group':
+            if not p_shape in self.m_shapes:
+                self.m_shapes.append(p_shape)
+            else:
+                raise ValueError(f"shape: {p_shape.text} already exist in page {self.name}")
+
+    @property
+    def shapes(self):
+        return self.m_shapes
+
+
+class VisioFileToImport:
+    def __init__(self, p_path: pathlib.Path) -> None:
+        self.m_pages = {}
+        self.name = p_path.stem
+        self.path = p_path
+
+    def add_page(self, p_page: VisioPage):
+        if not p_page.name in self.m_pages.keys():
+            self.m_pages[p_page.name] = p_page
+        else:
+            raise KeyError(f"The page: {p_page.name} already exist in the file: {self.m_name}")
+    
+    @property
+    def pages(self):
+        return self.m_pages.values()
+
+
+
 
 def is_connector(p_shape) -> bool:
     return True if p_shape.cell_value('ShapeRouteStyle') is not None else False
@@ -95,24 +204,6 @@ def is_connector(p_shape) -> bool:
 def fix_old_color(p_shape):
     l_current_color = p_shape.cell_value('FillForegnd')
     p_shape.set_cell_value('FillForegnd', OLD_NEW_COLORS_MAPPING[l_current_color])
-
-
-def verify_shape_color(p_shape):
-    l_sub_shapes = p_shape.sub_shapes()
-    if l_sub_shapes:  # If there is sub shapes to check, go recursive call
-        for l_shape in l_sub_shapes:
-            if l_shape.shape_type is not None:
-                verify_shape_color(l_shape)
-
-    # Verify if the shape foreground exists, and it's color is allowed
-    if p_shape.shape_type != 'Group':
-        if p_shape.cell_value('FillForegnd') in OLD_COLORS:  # Old color present try to fix it
-            fix_old_color(p_shape)
-            print(f"The color for the element with the ID: {p_shape.ID} and the text: \"{p_shape.text[:-1]}\""
-                  f" on page: \"{page.name}\" has been successfully replaced")
-        if p_shape.cell_value('FillForegnd') not in ALLOWED_COLORS:
-            print(f"The element with the ID: {p_shape.ID} and the text: \"{p_shape.text[:-1]}\""
-                  f" on page: \"{page.name}\" is made of a disallowed color: {p_shape.cell_value('FillForegnd')}")
 
 def get_position(p_shape: Shape):
     x_position = 0
@@ -130,9 +221,9 @@ def get_position(p_shape: Shape):
 
     return (x_position, y_position)
 
-def convert_shape_coordinates_to_EA(p_shape: Shape):
+def convert_shape_coordinates_to_EA(p_shape: VisioShape):
     # Variables until the next comments are in inch
-    x_position, y_position = get_position(p_shape)
+    x_position, y_position = p_shape.get_position()
     x_left_top_corner = x_position - (p_shape.width/2)
     y_left_top_corner = PAGE_HEIGHT_INCHES - (y_position + (p_shape.height/2))
     
@@ -200,33 +291,26 @@ def create_EA_connectors(p_ea_repository):
             l_connector.SupplierID = p_ea_repository.GetElementByGuid(connector.end_connector_side).ElementID
             l_connector.Update()
 
-def convert_shape_to_EA_element(p_shape: Shape, p_use_case_package, p_use_case_diagram):
-    l_sub_shapes = p_shape.sub_shapes()
-    if l_sub_shapes:  # If there is sub shapes to check, go recursive call
-        for l_shape in l_sub_shapes:
-            if l_shape.shape_type is not None:
-                convert_shape_to_EA_element(l_shape, p_use_case_package, p_use_case_diagram)
+def convert_shape_to_EA_element(p_shape: VisioShape, p_use_case_package, p_use_case_diagram):
+    l_rgb_color = p_shape.color
+    l_object_type = COLOR_EA_ELEMENTS_MAPPING[l_rgb_color]
 
-    if p_shape.shape_type != 'Group':
-        l_rgb_color = p_shape.cell_value('FillForegnd')
-        l_object_type = COLOR_EA_ELEMENTS_MAPPING[l_rgb_color]
+    l_element = p_use_case_package.Elements.AddNew(p_shape.text.rstrip("\n"), l_object_type)
+    if l_object_type == EA_TEXT_ELEMENT:
+        # To have information display on a text element, note should be put on it
+        l_element.Notes = p_shape.text
+    l_element.SetAppearance(1, 0, convert_RGB_to_EA_color(l_rgb_color))
+    l_element.Update()
+    
+    for connector in p_shape.m_internal_visio_shape.connected_shapes:
+        store_connector(connector, l_element)
+    
+    x_left_top_corner, width, y_left_top_corner, heigth = convert_shape_coordinates_to_EA(p_shape)
+    l_position = f"l={x_left_top_corner};r={width};t={y_left_top_corner};b={heigth};"
 
-        l_element = p_use_case_package.Elements.AddNew(p_shape.text.rstrip("\n"), l_object_type)
-        if l_object_type == EA_TEXT_ELEMENT:
-            # To have information display on a text element, note should be put on it
-            l_element.Notes = p_shape.text
-        l_element.SetAppearance(1, 0, convert_RGB_to_EA_color(l_rgb_color))
-        l_element.Update()
-        
-        for connector in p_shape.connected_shapes:
-            store_connector(connector, l_element)
-        
-        x_left_top_corner, width, y_left_top_corner, heigth = convert_shape_coordinates_to_EA(p_shape)
-        l_position = f"l={x_left_top_corner};r={width};t={y_left_top_corner};b={heigth};"
-
-        l_diagram_object = p_use_case_diagram.DiagramObjects.AddNew(l_position, "")
-        l_diagram_object.ElementID = l_element.ElementID
-        l_diagram_object.Update()
+    l_diagram_object = p_use_case_diagram.DiagramObjects.AddNew(l_position, "")
+    l_diagram_object.ElementID = l_element.ElementID
+    l_diagram_object.Update()
 
 def build_files_list_to_import(p_path):
     l_visio_files_to_import = []
@@ -257,55 +341,86 @@ if __name__ == "__main__":
     l_parser.add_argument("Path", help="Path to a Visio file (or a directory containing multiple Visio files) to be imported in EA",
                           type=pathlib.Path)
     l_parser.add_argument("GUID", help="Enterprise Architect GUID on which the imported elements will be added")
-    l_parser.add_argument("-c", "--check-colors", help="verify if colors used in Visio diagram are compliant with Event storming",
-                          action="store_true")
-    l_parser.add_argument("--fix-colors", help="try to fix the colors used in the Visio diagram if they aren't compliant with Event storming convention",
-                          action="store_true")
+    l_parser.add_argument("-c", "--check-colors-only", help="Verify only if colors used in Visio diagram are \
+                          compliant with Event storming without doing any addition to Enterprise Architect", action="store_true")
+    l_parser.add_argument("--fix-colors", help="Try to fix the colors used in the Visio diagram if they aren't \
+                          compliant with Event storming convention", action="store_true")
     l_parser.add_argument("--dry-run", help="run the script without doing the import in Enterprise Architect", action="store_true")
     args = l_parser.parse_args()
 
-    l_visio_files = build_files_list_to_import(args.Path)
-
-    try:
-        eaApp = win32com.client.Dispatch("EA.App")
-    except:
-        print(f"Impossible to connect to EA, please verify Enterprise Architect is open")
+    l_visio_file_to_work_on = []
+    l_visio_files_path = build_files_list_to_import(args.Path)
+    if not l_visio_files_path:
+        print(f"No visio file to import, exiting...")
         exit()
-    mEaRep = eaApp.Repository
-    if mEaRep.ConnectionString == '':
-        print(f"EA has no Model loaded")
-        exit()
-    else:
-        print(f"Connecting...{mEaRep.ConnectionString}")
 
-    # Get the node from which we will start to add the imported elements from Visio. This node
-    # is recovered through the GUID provided by the user
-    l_root_node = mEaRep.GetPackageByGuid(args.GUID)
-
-    mEaRep.BatchAppend = True
-    mEaRep.EnableUIUpdates = False
-    for visio_file_path in l_visio_files:
-        # For each file, we create a new package inside EA
-        l_root_package = l_root_node.Packages.AddNew(visio_file_path.stem, "")
-        l_root_package.Update()
-
+    # Store all the data we need to work on
+    for visio_file_path in l_visio_files_path:
         with VisioFile(str(visio_file_path)) as vis:
+            l_visio_file_to_import = VisioFileToImport(visio_file_path)
             for page in vis.pages:
+                l_visio_page_to_import = VisioPage(page.name)
+                 # Iterate over each shape of this page
+                shapes = page.sub_shapes()
+                for shape in shapes:
+                    if not is_connector(shape):
+                        l_visio_shape = VisioShape(shape)
+                        l_visio_page_to_import.add_shape(l_visio_shape)
+                l_visio_file_to_import.add_page(l_visio_page_to_import)
+            l_visio_file_to_work_on.append(l_visio_file_to_import)
+
+    # First check if colors used in Visio are the correct one
+    l_all_color_are_ok = True
+    for visio_file in l_visio_file_to_work_on:
+        for page in visio_file.pages:
+            # Iterate over each shape of this page
+            for shape in page.shapes:
+                shape.fix_old_color()
+                if not shape.is_color_allowed():
+                    if l_all_color_are_ok:
+                        l_all_color_are_ok = False
+                    print(f"The element with the ID: {shape.ID} and the text: \"{shape.text}\""
+                          f" on page: \"{page.name}\" is made of a disallowed color: {shape.color}")
+
+    # Then, we add the element in Enterprise architect if all the colors check are ok and
+    # the user asked to do it
+    if (not args.check_colors_only) and (not args.dry_run):
+        try:
+            eaApp = win32com.client.Dispatch("EA.App")
+        except:
+            print(f"Impossible to connect to EA, please verify Enterprise Architect is open")
+            exit()
+        mEaRep = eaApp.Repository
+        if mEaRep.ConnectionString == '':
+            print(f"EA has no Model loaded")
+            exit()
+        else:
+            print(f"Connecting...{mEaRep.ConnectionString}")
+
+        # Get the node from which we will start to add the imported elements from Visio. This node
+        # is recovered through the GUID provided by the user
+        l_root_node = mEaRep.GetPackageByGuid(args.GUID)
+
+        mEaRep.BatchAppend = True
+        mEaRep.EnableUIUpdates = False
+        for visio_file in l_visio_file_to_work_on:
+            # For each file, we create a new package inside EA
+            l_root_package = l_root_node.Packages.AddNew(visio_file.name, "")
+            l_root_package.Update()
+
+            for page in visio_file.pages:
                 # For each pages inside the Visio file, we create an activity diagram
                 # with the page name
                 l_diagram = l_root_package.Diagrams.AddNew(page.name, EA_ACTIVITY_DIAGRAM)
                 l_diagram.Update()
 
                 # Iterate over each shape of this page
-                shapes = page.sub_shapes()
-                for shape in shapes:
-                    if not is_connector(shape):
-                        verify_shape_color(shape)
-                        convert_shape_to_EA_element(shape, l_root_package, l_diagram)
+                for shape in page.shapes:
+                    convert_shape_to_EA_element(shape, l_root_package, l_diagram)
 
                 create_EA_connectors(mEaRep)
                 VISIO_CONNECTORS = {}
-    
-    mEaRep.RefreshModelView(FULL_MODEL)
-    mEaRep.BatchAppend = False
-    mEaRep.EnableUIUpdates = True
+        
+        mEaRep.RefreshModelView(FULL_MODEL)
+        mEaRep.BatchAppend = False
+        mEaRep.EnableUIUpdates = True

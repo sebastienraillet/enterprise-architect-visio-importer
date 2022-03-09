@@ -76,6 +76,7 @@ COLOR_EA_ELEMENTS_MAPPING = {ALLOWED_DOMAIN_EVENT_COLOR: EA_ACTION_ELEMENT,
 
 PIXEL_PER_INCHES: Final[int] = 96
 PAGE_HEIGHT_INCHES: Final[int] = 11.70
+VISIO_TRANSPARENT_BACKGROUND = '0'
 
 VISIO_CONNECTORS = {}
 
@@ -103,7 +104,10 @@ class VisioShape:
 
     @property
     def color(self):
-        return self.m_internal_visio_shape.cell_value('FillForegnd')
+        if self.m_internal_visio_shape.cell_value('FillPattern') == VISIO_TRANSPARENT_BACKGROUND:
+            return ALLOWED_NONE_COLOR
+        else:
+            return self.m_internal_visio_shape.cell_value('FillForegnd')
 
     @color.setter
     def color(self, p_color: str):

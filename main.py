@@ -75,7 +75,6 @@ COLOR_EA_ELEMENTS_MAPPING = {ALLOWED_DOMAIN_EVENT_COLOR: EA_ACTION_ELEMENT,
                              ALLOWED_NONE_COLOR: EA_TEXT_ELEMENT}
 
 PIXEL_PER_INCHES: Final[int] = 96
-PAGE_HEIGHT_INCHES: Final[int] = 11.70
 VISIO_TRANSPARENT_BACKGROUND = '0'
 
 VISIO_CONNECTORS = {}
@@ -163,14 +162,17 @@ class VisioShape:
 
 
 class VisioPage:
-    def __init__(self, p_name: str) -> None:
+    def __init__(self, p_name: str, p_width: float, p_height: float) -> None:
         self.m_shapes = []
         self.name = p_name
+        self.width = p_width
+        self.height = p_height
 
     def add_shape(self, p_shape: VisioShape):
         for sub_shape in p_shape.m_internal_visio_shape.sub_shapes():
             if sub_shape.shape_type is not None:
                 l_visio_shape = VisioShape(sub_shape)
+                l_visio_shape.page = self
                 self.add_shape(l_visio_shape)
                 
         if p_shape.m_internal_visio_shape.shape_type != 'Group':
@@ -183,6 +185,7 @@ class VisioPage:
     @property
     def shapes(self):
         return self.m_shapes
+
 
 
 class VisioFileToImport:
@@ -204,14 +207,14 @@ class VisioFileToImport:
 
 
 def is_connector(p_shape) -> bool:
-    return True if p_shape.cell_value('ShapeRouteStyle') is not None else False
+    return True if ((p_shape.cell_value('ShapeRouteStyle') is not None) or (p_shape.cell_value('EndArrow') is not None)) else False
 
 
 def convert_shape_coordinates_to_EA(p_shape: VisioShape):
     # Variables until the next comments are in inch
     x_position, y_position = p_shape.get_position()
     x_left_top_corner = x_position - (p_shape.width/2)
-    y_left_top_corner = PAGE_HEIGHT_INCHES - (y_position + (p_shape.height/2))
+    y_left_top_corner = p_shape.page.height - (y_position + (p_shape.height/2))
     
     # Convert inches in pixels
     width = (x_left_top_corner + p_shape.width)*PIXEL_PER_INCHES
@@ -376,7 +379,7 @@ if __name__ == "__main__":
         with VisioFile(str(visio_file_path)) as vis:
             l_visio_file_to_import = VisioFileToImport(visio_file_path)
             for page in vis.pages:
-                l_visio_page_to_import = VisioPage(page.name)
+                l_visio_page_to_import = VisioPage(page.name, page.width, page.height)
                  # Iterate over each shape of this page
                 shapes = page.sub_shapes()
                 for shape in shapes:
